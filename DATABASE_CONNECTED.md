@@ -173,7 +173,7 @@ When deploying to production (Vercel, Railway, etc.):
 
 ### Environment Variables to Set:
 ```bash
-DATABASE_URL="postgresql://neondb_owner:npg_uXyc9m1sEvRY@ep-square-recipe-a7wm946p-pooler.ap-southeast-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+DATABASE_URL="<your-neon-connection-string-here>"
 
 JWT_SECRET="<generate-new-secure-secret>"
 
