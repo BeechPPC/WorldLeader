@@ -14,6 +14,7 @@ export default function RegisterPage() {
     continent: '',
     countryCode: '',
   })
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -24,6 +25,12 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    if (!acceptedTerms) {
+      setError('You must accept the Terms of Service and acknowledge the disclaimers to continue.')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -161,10 +168,49 @@ export default function RegisterPage() {
               </div>
             )}
 
+            {/* Terms and Conditions Acceptance */}
+            <div className="bg-red-500/10 border-2 border-red-500/50 rounded-xl p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="acceptTerms"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 w-5 h-5 bg-gray-800 border-gray-600 rounded focus:ring-2 focus:ring-red-500"
+                  required
+                />
+                <label htmlFor="acceptTerms" className="text-sm text-gray-200 leading-relaxed">
+                  <span className="font-black text-red-400 block mb-2 text-base">⚠️ REQUIRED: I understand and agree that:</span>
+                  <ul className="list-disc list-inside space-y-1 ml-2 text-xs">
+                    <li className="font-bold">WorldLeader.io is FOR ENTERTAINMENT ONLY with NO real-world value</li>
+                    <li className="font-bold">ALL purchases are 100% NON-REFUNDABLE under any circumstances</li>
+                    <li className="font-bold">Rankings have NO prizes, rewards, or tangible benefits</li>
+                    <li className="font-bold">I am 18+ years of age</li>
+                    <li className="font-bold">I will NOT pursue refunds, chargebacks, or legal action</li>
+                  </ul>
+                  <p className="mt-3 text-xs">
+                    I have read and agree to the{' '}
+                    <Link href="/terms" target="_blank" className="text-blue-400 hover:text-blue-300 underline font-semibold">
+                      Terms of Service
+                    </Link>
+                    ,{' '}
+                    <Link href="/privacy" target="_blank" className="text-blue-400 hover:text-blue-300 underline font-semibold">
+                      Privacy Policy
+                    </Link>
+                    , and{' '}
+                    <Link href="/disclaimer" target="_blank" className="text-blue-400 hover:text-blue-300 underline font-semibold">
+                      Disclaimer
+                    </Link>
+                    .
+                  </p>
+                </label>
+              </div>
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !acceptedTerms}
               className="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-bold rounded-lg transition-colors"
             >
               {loading ? 'Creating Account...' : 'Start Your Climb'}
