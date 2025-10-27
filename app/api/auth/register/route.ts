@@ -16,6 +16,15 @@ const registerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Verify database connection first
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL environment variable is not set')
+      return NextResponse.json(
+        { error: 'Server configuration error: Database URL not configured' },
+        { status: 500 }
+      )
+    }
+
     const body = await request.json()
     const validatedData = registerSchema.parse(body)
 
@@ -89,9 +98,31 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Enhanced error logging for debugging
     console.error('Registration error:', error)
+    console.error('Error details:', {
+      name: error instanceof Error ? error.name : 'Unknown',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
+    // Check if it's a database connection error
+    if (error instanceof Error && error.message.includes('PrismaClient')) {
+      console.error('Database connection issue detected')
+      return NextResponse.json(
+        {
+          error: 'Database connection failed',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : String(error)) : undefined
+      },
       { status: 500 }
     )
   }
