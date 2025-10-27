@@ -7,31 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Notification {
-  id         String   @id
-  userId     String
-  message    String
-  readStatus Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  User       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, readStatus])
-}
-
-model Transaction {
-  id                 String            @id
-  userId             String
-  amountUsd          Float
-  positionsPurchased Int
-  timestamp          DateTime          @default(now())
-  paymentStatus      TransactionStatus @default(COMPLETED)
-  User               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-}
-
 model User {
-  id                      String         @id
+  id                      String         @id @default(cuid())
   username                String         @unique
   email                   String         @unique
   password                String
@@ -41,12 +18,35 @@ model User {
   currentContinentRank    Int            @default(0)
   currentGlobalRank       Int            @default(0)
   createdAt               DateTime       @default(now())
-  updatedAt               DateTime
-  Notification            Notification[]
-  Transaction             Transaction[]
+  updatedAt               DateTime       @updatedAt
+  transactions            Transaction[]
+  notifications           Notification[]
 
   @@index([continent, totalPositionsPurchased])
   @@index([totalPositionsPurchased])
+}
+
+model Transaction {
+  id                 String            @id @default(cuid())
+  userId             String
+  amountUsd          Float
+  positionsPurchased Int
+  timestamp          DateTime          @default(now())
+  paymentStatus      TransactionStatus @default(COMPLETED)
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String
+  message    String
+  readStatus Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readStatus])
 }
 
 enum Continent {
