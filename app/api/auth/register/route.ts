@@ -109,13 +109,19 @@ export async function POST(request: NextRequest) {
       select: { currentContinentRank: true },
     })
 
-    // Send welcome email with actual starting rank
-    await sendWelcomeEmail(
-      user.email,
-      user.username,
-      user.continent,
-      updatedUser?.currentContinentRank || startingContinentRank
-    )
+    // Send welcome email with actual starting rank (non-blocking)
+    try {
+      const emailResult = await sendWelcomeEmail(
+        user.email,
+        user.username,
+        user.continent,
+        updatedUser?.currentContinentRank || startingContinentRank
+      )
+      console.log('Welcome email result:', emailResult)
+    } catch (emailError) {
+      // Don't block registration if email fails
+      console.error('Welcome email failed (non-blocking):', emailError)
+    }
 
     // Create JWT token
     const token = await createToken({
