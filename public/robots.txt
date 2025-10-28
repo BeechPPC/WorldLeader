@@ -1,0 +1,8 @@
+# robots.txt for WorldLeader.io
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /api/auth/
+
+# Sitemaps
+Sitemap: https://world-leader.vercel.app/sitemap.xml
