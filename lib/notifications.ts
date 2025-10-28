@@ -83,3 +83,52 @@ export async function sendWelcomeEmail(
     Message: You're now competing in ${continent}. Climb to conquer the world!
   `)
 }
+
+export async function sendPasswordResetEmail(
+  userEmail: string,
+  resetToken: string
+) {
+  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`
+
+  console.log(`
+    📧 PASSWORD RESET EMAIL:
+    To: ${userEmail}
+    Subject: Reset Your WorldLeader.io Password
+    Reset Link: ${resetUrl}
+
+    This link expires in 1 hour.
+  `)
+
+  // For production email sending, uncomment below:
+  /*
+  const info = await transporter.sendMail({
+    from: process.env.EMAIL_FROM || 'noreply@worldleader.io',
+    to: userEmail,
+    subject: 'Reset Your WorldLeader.io Password',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1e40af;">WorldLeader.io - Password Reset</h2>
+        <p style="font-size: 16px; line-height: 1.6;">
+          You requested to reset your password. Click the button below to create a new password:
+        </p>
+        <a href="${resetUrl}"
+           style="display: inline-block; margin: 20px 0; padding: 12px 24px;
+                  background-color: #1e40af; color: white; text-decoration: none;
+                  border-radius: 6px; font-weight: bold;">
+          Reset Password
+        </a>
+        <p style="font-size: 14px; color: #666;">
+          This link will expire in 1 hour.
+        </p>
+        <p style="font-size: 14px; color: #666;">
+          If you didn't request this, please ignore this email. Your password will remain unchanged.
+        </p>
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;">
+        <p style="font-size: 12px; color: #999;">
+          For security reasons, this link can only be used once.
+        </p>
+      </div>
+    `,
+  })
+  */
+}

@@ -19,6 +19,8 @@ model User {
   totalPositionsPurchased Int            @default(0)
   currentContinentRank    Int            @default(0)
   currentGlobalRank       Int            @default(0)
+  resetToken              String?
+  resetTokenExpiry        DateTime?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   notifications           Notification[]
@@ -26,6 +28,7 @@ model User {
 
   @@index([continent, totalPositionsPurchased])
   @@index([totalPositionsPurchased])
+  @@index([resetToken])
 }
 
 model Transaction {
