@@ -6,23 +6,29 @@ WorldLeader.io is a competitive leaderboard web application where users buy thei
 
 ## Features
 
-- User authentication with JWT tokens
+- User authentication with JWT tokens and secure password reset
 - 7 continental leaderboards (Africa, Asia, Europe, North America, South America, Oceania, Antarctica)
 - Global leaderboard aggregating all continents
 - Position climbing system ($1 USD = 1 position)
 - Real-time rank updates
-- Email notifications when overtaken (console logging in MVP)
-- Mobile-responsive design
-- Dark mode theme with world map background
+- **Production email notifications** (Resend):
+  - Welcome emails on registration
+  - Password reset emails
+  - Overtaken notifications when someone passes you
+  - In-app notification feed
+- User profile dashboard with stats and transaction history
+- Mobile-responsive design with visual rank cards and Olympic podium
+- Dark mode theme with gradient backgrounds and global imagery
 
 ## Tech Stack
 
 - **Frontend**: React 19, Next.js 16, TypeScript
 - **Styling**: Tailwind CSS
 - **Backend**: Next.js API Routes
-- **Database**: SQLite (via Prisma ORM)
-- **Authentication**: JWT with jose library
-- **Email**: Nodemailer (console logging for MVP)
+- **Database**: PostgreSQL (Neon) via Prisma ORM
+- **Authentication**: JWT with jose library, bcrypt password hashing
+- **Email**: Resend API (transactional emails with branded templates)
+- **Hosting**: Vercel (serverless)
 
 ## Getting Started
 
@@ -54,17 +60,28 @@ npm run dev
 
 ## Environment Variables
 
-The `.env` file contains:
+The `.env` file should contain:
 
 ```env
-DATABASE_URL="file:./dev.db"
+# Database (use PostgreSQL for production)
+DATABASE_URL="postgresql://username:password@host:5432/database"
+
+# JWT Secret (generate with: openssl rand -base64 32)
 JWT_SECRET="your-secret-key-change-in-production-min-32-chars-long"
-EMAIL_SERVER="smtp://user:pass@smtp.example.com:587"
-EMAIL_FROM="noreply@worldleader.io"
+
+# Email (Resend API)
+RESEND_API_KEY="re_xxxxx"
+EMAIL_FROM="WorldLeader.io <onboarding@resend.dev>"
+
+# App URL
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
-**Note**: For production, change the JWT_SECRET to a secure random string and configure real SMTP settings for email notifications.
+**Production Setup**:
+- Use PostgreSQL (Neon, Vercel Postgres, or Supabase)
+- Generate secure JWT_SECRET: `openssl rand -base64 32`
+- Get Resend API key from [resend.com](https://resend.com) (free tier: 3,000 emails/month)
+- See `EMAIL_SETUP_GUIDE.md` for detailed email configuration
 
 ## Project Structure
 
@@ -156,38 +173,53 @@ WorldLeader/
 - Tie-breaker: Earlier registration = higher rank
 - Cap at position #1 (can't buy past #1)
 
-## Future Enhancements (Phase 2+)
+## Current Implementation Status
 
+### ✅ Completed Features
+- [x] User authentication with JWT and secure password hashing
+- [x] 7 continental + global leaderboards
+- [x] Visual leaderboard with Olympic podium for top 3
+- [x] User profile dashboard with stats and transaction history
+- [x] Real email notifications (Resend integration)
+- [x] Password reset flow with secure tokens
+- [x] Rate limiting on auth endpoints
+- [x] Password strength validation
+- [x] In-app notification feed
+- [x] PostgreSQL database (Neon)
+- [x] Mobile-responsive design
+- [x] SEO optimization (metadata, sitemap, robots.txt)
+
+### 🚧 Next Phase (Payment Integration)
 - [ ] Stripe payment integration
-- [ ] Real email notifications via SMTP
-- [ ] In-app notification system with bell icon
-- [ ] User profile pages
-- [ ] Achievement badges
-- [ ] Transaction history
-- [ ] Leaderboard position change animations
-- [ ] WebSocket for real-time updates
+- [ ] Enhanced transaction security (idempotency, CSRF protection)
+- [ ] Webhook event handling
+- [ ] Error tracking and monitoring
+- [ ] Email rate limiting with persistence
+- [ ] Fraud detection patterns
 - [ ] Admin dashboard
-- [ ] PostgreSQL for production scalability
+
+See `PRE_PAYMENT_CHECKLIST.md` for detailed payment integration tasks.
 
 ## Development Notes
 
-### MVP Shortcuts
-- Payment processing is simulated (always successful)
-- Email notifications logged to console instead of sent
-- SQLite database (switch to PostgreSQL for production)
-- No rate limiting or fraud protection yet
+### Current Status
+- **Email System**: ✅ Production-ready with Resend (3,000 emails/month free)
+- **Database**: ✅ PostgreSQL (Neon serverless)
+- **Hosting**: ✅ Vercel with automatic deployments
+- **Payment Processing**: ⚠️ Simulated (always successful) - Stripe integration pending
+- **Rate Limiting**: ⚠️ In-memory (resets on deploy) - Needs Redis/KV for production
 
 ### Production Checklist
-- [ ] Change JWT_SECRET to secure random value
-- [ ] Configure real SMTP server
-- [ ] Switch to PostgreSQL
-- [ ] Add rate limiting
-- [ ] Implement Stripe for payments
-- [ ] Add error tracking (Sentry)
-- [ ] Set up monitoring
-- [ ] Configure proper CORS
-- [ ] Add input sanitization
-- [ ] Implement CSRF protection
+- [x] Secure JWT_SECRET configured
+- [x] Real email service (Resend)
+- [x] PostgreSQL database
+- [x] Basic rate limiting
+- [x] Password strength validation
+- [ ] Stripe payment integration
+- [ ] Persistent rate limiting (Redis/Upstash)
+- [ ] Error tracking (Sentry)
+- [ ] Webhook signature verification
+- [ ] CSRF protection for payments
 
 ## License
 
