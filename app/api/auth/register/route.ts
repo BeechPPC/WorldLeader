@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { getNewUserStartingRank, recalculateRankings } from '@/lib/rankings'
-import { sendWelcomeEmail } from '@/lib/notifications'
+import { sendWelcomeEmail } from '@/lib/email'
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit'
 import { validatePasswordStrength } from '@/lib/password-validation'
 import { z } from 'zod'
@@ -103,8 +103,19 @@ export async function POST(request: NextRequest) {
     // Recalculate all rankings
     await recalculateRankings()
 
-    // Send welcome email
-    await sendWelcomeEmail(user.email, user.username, user.continent)
+    // Get updated rank after recalculation
+    const updatedUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { currentContinentRank: true },
+    })
+
+    // Send welcome email with actual starting rank
+    await sendWelcomeEmail(
+      user.email,
+      user.username,
+      user.continent,
+      updatedUser?.currentContinentRank || startingContinentRank
+    )
 
     // Create JWT token
     const token = await createToken({

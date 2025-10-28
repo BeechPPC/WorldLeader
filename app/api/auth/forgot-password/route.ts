@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit'
 import { createPasswordResetToken } from '@/lib/password-reset'
-import { sendPasswordResetEmail } from '@/lib/notifications'
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -32,13 +31,9 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const validatedData = forgotPasswordSchema.parse(body)
 
-    // Create reset token (returns null if user doesn't exist)
-    const resetToken = await createPasswordResetToken(validatedData.email)
-
-    if (resetToken) {
-      // Send password reset email
-      await sendPasswordResetEmail(validatedData.email, resetToken)
-    }
+    // Create reset token and send email (returns null if user doesn't exist)
+    // Email is sent inside createPasswordResetToken function
+    await createPasswordResetToken(validatedData.email)
 
     // Always return success to prevent user enumeration
     // Don't reveal whether the email exists or not

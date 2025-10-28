@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto'
 import { prisma } from './db'
+import { sendPasswordResetEmail } from './email'
 
 /**
  * Generate a secure random token for password reset
@@ -9,7 +10,7 @@ export function generateResetToken(): string {
 }
 
 /**
- * Create a password reset token for a user
+ * Create a password reset token for a user and send email
  * Token expires in 1 hour
  */
 export async function createPasswordResetToken(email: string): Promise<string | null> {
@@ -32,6 +33,9 @@ export async function createPasswordResetToken(email: string): Promise<string | 
       resetTokenExpiry,
     },
   })
+
+  // Send password reset email
+  await sendPasswordResetEmail(user.email, user.username, resetToken)
 
   return resetToken
 }

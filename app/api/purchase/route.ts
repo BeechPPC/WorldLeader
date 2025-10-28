@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { recalculateRankings, getUsersOvertaken } from '@/lib/rankings'
-import { sendOvertakenEmail } from '@/lib/notifications'
+import { sendOvertakenEmail } from '@/lib/email'
 import { z } from 'zod'
 
 const purchaseSchema = z.object({
@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
         const overtakenUser = await prisma.user.findUnique({
           where: { id: userId },
           select: {
+            id: true,
             email: true,
             username: true,
             currentContinentRank: true,
@@ -105,13 +106,25 @@ export async function POST(request: NextRequest) {
         })
 
         if (overtakenUser) {
+          const positionsLost = overtakenUser.currentContinentRank - oldContinentRank + 1
+
+          // Send email notification
           await sendOvertakenEmail(
             overtakenUser.email,
             overtakenUser.username,
             user.username,
             user.continent.replace('_', ' '),
-            overtakenUser.currentContinentRank
+            overtakenUser.currentContinentRank,
+            positionsLost
           )
+
+          // Store notification in database
+          await prisma.notification.create({
+            data: {
+              userId: overtakenUser.id,
+              message: `${user.username} just overtook you on the ${user.continent.replace('_', ' ')} leaderboard! You're now ranked #${overtakenUser.currentContinentRank}.`,
+            },
+          })
         }
       }
     }
