@@ -56,11 +56,12 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
 export async function setAuthCookie(token: string) {
   const cookieStore = await cookies()
   cookieStore.set('auth-token', token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    httpOnly: true, // Prevents JavaScript access (XSS protection)
+    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+    sameSite: 'strict', // Changed from 'lax' to 'strict' for better CSRF protection
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
+    // Note: __Secure- prefix is automatically added when secure: true
   })
 }
 

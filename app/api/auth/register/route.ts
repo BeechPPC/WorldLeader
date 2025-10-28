@@ -3,19 +3,43 @@ import { prisma } from '@/lib/db'
 import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { getNewUserStartingRank, recalculateRankings } from '@/lib/rankings'
 import { sendWelcomeEmail } from '@/lib/notifications'
+import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit'
+import { validatePasswordStrength } from '@/lib/password-validation'
 import { z } from 'zod'
 import { Continent } from '@prisma/client'
 
 const registerSchema = z.object({
-  email: z.string().email(),
-  username: z.string().min(3).max(20),
-  password: z.string().min(6),
+  email: z.string().email('Invalid email address'),
+  username: z.string()
+    .min(3, 'Username must be at least 3 characters')
+    .max(20, 'Username must be at most 20 characters')
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores, and hyphens'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   continent: z.nativeEnum(Continent),
   countryCode: z.string().length(2),
 })
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 3 registration attempts per 15 minutes
+    const rateLimitResult = await rateLimit(request, {
+      maxRequests: 3,
+      windowMs: 15 * 60 * 1000,
+    })
+
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        {
+          error: 'Too many registration attempts. Please try again later.',
+          retryAfter: new Date(rateLimitResult.resetTime).toISOString(),
+        },
+        {
+          status: 429,
+          headers: getRateLimitHeaders(rateLimitResult.remaining, rateLimitResult.resetTime),
+        }
+      )
+    }
+
     // Verify database connection first
     if (!process.env.DATABASE_URL) {
       console.error('DATABASE_URL environment variable is not set')
@@ -27,6 +51,18 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const validatedData = registerSchema.parse(body)
+
+    // Validate password strength
+    const passwordStrength = validatePasswordStrength(validatedData.password)
+    if (!passwordStrength.isValid) {
+      return NextResponse.json(
+        {
+          error: 'Password does not meet security requirements',
+          feedback: passwordStrength.feedback,
+        },
+        { status: 400 }
+      )
+    }
 
     // Check if user already exists
     const existingUser = await prisma.user.findFirst({
