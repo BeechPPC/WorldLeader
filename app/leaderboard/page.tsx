@@ -63,7 +63,6 @@ export default function LeaderboardPage() {
   const [purchaseAmount, setPurchaseAmount] = useState('')
   const [purchasing, setPurchasing] = useState(false)
   const [purchaseError, setPurchaseError] = useState('')
-  const [purchaseSuccess, setPurchaseSuccess] = useState('')
 
   useEffect(() => {
     fetchCurrentUser()
@@ -116,16 +115,15 @@ export default function LeaderboardPage() {
   const handlePurchase = async (e: React.FormEvent) => {
     e.preventDefault()
     setPurchaseError('')
-    setPurchaseSuccess('')
     setPurchasing(true)
 
     try {
-      const amount = parseFloat(purchaseAmount)
+      const amount = parseInt(purchaseAmount, 10)
       if (isNaN(amount) || amount <= 0) {
         throw new Error('Please enter a valid amount')
       }
 
-      const response = await fetch('/api/purchase', {
+      const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amountUsd: amount }),
@@ -134,21 +132,13 @@ export default function LeaderboardPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Purchase failed')
+        throw new Error(data.error || 'Checkout failed')
       }
 
-      setPurchaseSuccess(data.message)
-      setPurchaseAmount('')
-      await fetchCurrentUser()
-      await fetchLeaderboard()
-
-      setTimeout(() => {
-        setShowPurchaseModal(false)
-        setPurchaseSuccess('')
-      }, 2000)
+      // Redirect to Stripe Checkout
+      window.location.href = data.url
     } catch (err: any) {
       setPurchaseError(err.message)
-    } finally {
       setPurchasing(false)
     }
   }
@@ -363,7 +353,7 @@ export default function LeaderboardPage() {
         </div>
 
         {/* Podium Display for Top 3 */}
-        {!leaderboardLoading && topThree.length >= 3 && (
+        {!leaderboardLoading && topThree.length >= 1 && (
           <div className="mb-12">
             <h2 className="text-4xl font-black text-white mb-8 text-center">
               <span className="text-5xl mr-3">🏆</span>
@@ -376,12 +366,12 @@ export default function LeaderboardPage() {
                 <div className="flex-1 max-w-xs">
                   <div className="relative group">
                     <div className="absolute inset-0 bg-gradient-to-t from-gray-600 to-gray-400 rounded-t-3xl blur opacity-50" />
-                    <div className="relative bg-gradient-to-t from-gray-700 to-gray-500 rounded-t-3xl p-6 border-4 border-gray-400 h-48 flex flex-col items-center justify-end">
+                    <div className={`relative bg-gradient-to-t from-gray-700 to-gray-500 rounded-t-3xl p-6 border-4 ${topThree[1].id === user?.id ? 'border-blue-400 ring-4 ring-blue-500/50' : 'border-gray-400'} min-h-48 flex flex-col items-center justify-end`}>
                       <div className="text-6xl mb-3 group-hover:scale-110 transition-transform">
                         {getCountryFlag(topThree[1].countryCode)}
                       </div>
                       <div className="text-white font-black text-xl mb-2 text-center truncate w-full">
-                        {topThree[1].username}
+                        {topThree[1].id === user?.id ? 'You' : topThree[1].username}
                       </div>
                       <div className="text-7xl mb-2">🥈</div>
                       <div className="text-gray-200 font-black text-4xl">#2</div>
@@ -395,12 +385,12 @@ export default function LeaderboardPage() {
                 <div className="flex-1 max-w-xs">
                   <div className="relative group">
                     <div className="absolute inset-0 bg-gradient-to-t from-yellow-600 to-yellow-300 rounded-t-3xl blur opacity-60 animate-pulse" />
-                    <div className="relative bg-gradient-to-t from-yellow-600 to-yellow-400 rounded-t-3xl p-8 border-4 border-yellow-300 h-64 flex flex-col items-center justify-end shadow-2xl">
+                    <div className={`relative bg-gradient-to-t from-yellow-600 to-yellow-400 rounded-t-3xl p-8 border-4 ${topThree[0].id === user?.id ? 'border-blue-400 ring-4 ring-blue-500/50' : 'border-yellow-300'} min-h-64 flex flex-col items-center justify-end shadow-2xl`}>
                       <div className="text-7xl mb-4 group-hover:scale-125 transition-transform animate-bounce">
                         {getCountryFlag(topThree[0].countryCode)}
                       </div>
                       <div className="text-white font-black text-2xl mb-3 text-center truncate w-full">
-                        {topThree[0].username}
+                        {topThree[0].id === user?.id ? 'You' : topThree[0].username}
                       </div>
                       <div className="text-8xl mb-2 animate-pulse">👑</div>
                       <div className="text-white font-black text-5xl">#1</div>
@@ -414,12 +404,12 @@ export default function LeaderboardPage() {
                 <div className="flex-1 max-w-xs">
                   <div className="relative group">
                     <div className="absolute inset-0 bg-gradient-to-t from-orange-700 to-orange-400 rounded-t-3xl blur opacity-50" />
-                    <div className="relative bg-gradient-to-t from-orange-800 to-orange-600 rounded-t-3xl p-6 border-4 border-orange-400 h-40 flex flex-col items-center justify-end">
+                    <div className={`relative bg-gradient-to-t from-orange-800 to-orange-600 rounded-t-3xl p-6 border-4 ${topThree[2].id === user?.id ? 'border-blue-400 ring-4 ring-blue-500/50' : 'border-orange-400'} min-h-40 flex flex-col items-center justify-end`}>
                       <div className="text-6xl mb-3 group-hover:scale-110 transition-transform">
                         {getCountryFlag(topThree[2].countryCode)}
                       </div>
                       <div className="text-white font-black text-xl mb-2 text-center truncate w-full">
-                        {topThree[2].username}
+                        {topThree[2].id === user?.id ? 'You' : topThree[2].username}
                       </div>
                       <div className="text-7xl mb-2">🥉</div>
                       <div className="text-orange-100 font-black text-4xl">#3</div>
@@ -546,12 +536,6 @@ export default function LeaderboardPage() {
                 </div>
               )}
 
-              {purchaseSuccess && (
-                <div className="bg-green-500/20 border-2 border-green-500/50 rounded-2xl p-4 text-green-300 font-semibold text-center">
-                  ✅ {purchaseSuccess}
-                </div>
-              )}
-
               <div>
                 <label className="block text-sm font-black text-gray-300 mb-3 uppercase tracking-wider">
                   Amount (USD)
@@ -570,7 +554,7 @@ export default function LeaderboardPage() {
                 {purchaseAmount && (
                   <div className="mt-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-2 border-blue-500/30 rounded-2xl p-4 text-center">
                     <p className="text-gray-300">
-                      You will climb <span className="font-black text-3xl text-blue-400">{Math.floor(parseFloat(purchaseAmount) || 0)}</span>
+                      You will climb <span className="font-black text-3xl text-blue-400">{parseInt(purchaseAmount, 10) || 0}</span>
                       <span className="font-bold text-purple-400 text-xl ml-2">positions</span>
                       <span className="text-3xl ml-2">⬆️</span>
                     </p>
@@ -584,7 +568,6 @@ export default function LeaderboardPage() {
                   onClick={() => {
                     setShowPurchaseModal(false)
                     setPurchaseError('')
-                    setPurchaseSuccess('')
                     setPurchaseAmount('')
                   }}
                   className="flex-1 px-6 py-4 bg-gray-700/80 hover:bg-gray-600/80 border-2 border-gray-600/50 text-white font-black text-lg rounded-2xl transition-all hover:scale-105"
@@ -596,13 +579,13 @@ export default function LeaderboardPage() {
                   disabled={purchasing}
                   className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-600 disabled:cursor-not-allowed text-white font-black text-lg rounded-2xl transition-all hover:scale-105 shadow-2xl shadow-blue-500/50"
                 >
-                  {purchasing ? '⏳ Processing...' : '✨ Confirm'}
+                  {purchasing ? '⏳ Redirecting...' : '✨ Pay with Stripe'}
                 </button>
               </div>
             </form>
 
             <p className="mt-6 text-xs text-gray-500 text-center italic">
-              MVP Mode: Payment processing is simulated
+              🔒 Secure payment via Stripe
             </p>
           </div>
         </div>

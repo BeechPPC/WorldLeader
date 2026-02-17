@@ -36,11 +36,13 @@ model Transaction {
   userId             String
   amountUsd          Float
   positionsPurchased Int
+  stripeSessionId    String?           @unique
   timestamp          DateTime          @default(now())
-  paymentStatus      TransactionStatus @default(COMPLETED)
+  paymentStatus      TransactionStatus @default(PENDING)
   user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([stripeSessionId])
 }
 
 model Notification {
