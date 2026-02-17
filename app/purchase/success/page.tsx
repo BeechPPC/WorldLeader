@@ -1,8 +1,9 @@
 'use client'
 
-import { Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import confetti from 'canvas-confetti'
 
 type Status = 'loading' | 'PENDING' | 'COMPLETED' | 'FAILED'
 
@@ -12,6 +13,36 @@ function PurchaseSuccessContent() {
   const sessionId = searchParams.get('session_id')
   const [status, setStatus] = useState<Status>('loading')
   const [positionsPurchased, setPositionsPurchased] = useState(0)
+  const confettiFired = useRef(false)
+
+  useEffect(() => {
+    if (status === 'COMPLETED' && !confettiFired.current) {
+      confettiFired.current = true
+      const duration = 2000
+      const end = Date.now() + duration
+
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.6 },
+          colors: ['#3b82f6', '#8b5cf6', '#ec4899'],
+        })
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.6 },
+          colors: ['#3b82f6', '#8b5cf6', '#ec4899'],
+        })
+        if (Date.now() < end) {
+          requestAnimationFrame(frame)
+        }
+      }
+      frame()
+    }
+  }, [status])
 
   useEffect(() => {
     if (!sessionId) {
@@ -95,12 +126,20 @@ function PurchaseSuccessContent() {
           <p className="text-gray-400 mb-8">
             Something went wrong with your payment. No charges were made.
           </p>
-          <Link
-            href="/leaderboard"
-            className="inline-flex items-center gap-3 px-10 py-5 bg-gradient-to-r from-gray-700 to-gray-600 text-white text-xl font-black rounded-2xl transition-all transform hover:scale-105"
-          >
-            Back to Leaderboard
-          </Link>
+          <div className="flex flex-col gap-4">
+            <Link
+              href="/leaderboard"
+              className="inline-flex items-center justify-center gap-3 px-10 py-5 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white text-xl font-black rounded-2xl transition-all transform hover:scale-105 shadow-2xl hover:shadow-purple-500/50"
+            >
+              Try Again
+            </Link>
+            <Link
+              href="/leaderboard"
+              className="inline-flex items-center justify-center gap-3 px-10 py-4 bg-gray-800/80 hover:bg-gray-700/80 text-gray-300 text-lg font-bold rounded-2xl transition-all border border-gray-700/50"
+            >
+              Back to Leaderboard
+            </Link>
+          </div>
         </div>
       )}
     </div>

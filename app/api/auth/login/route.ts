@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { prisma } from '@/lib/db'
 import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit'
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('Login error:', error)
+    Sentry.captureException(error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

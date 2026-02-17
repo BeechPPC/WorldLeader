@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { z } from 'zod'
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit'
 import { resetPassword, verifyResetToken } from '@/lib/password-reset'
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('Reset password error:', error)
+    Sentry.captureException(error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

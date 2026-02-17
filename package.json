@@ -17,9 +17,13 @@
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
+    "@sentry/nextjs": "^10.39.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/nodemailer": "^7.0.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.36.2",
     "bcryptjs": "^3.0.2",
+    "canvas-confetti": "^1.9.4",
     "dotenv": "^17.2.3",
     "jose": "^6.1.0",
     "next": "^16.1.6",
@@ -34,6 +38,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

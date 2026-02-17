@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { getCurrentUser } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { getStripe } from '@/lib/stripe'
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
         userId: currentUser.userId,
       },
       success_url: `${appUrl}/purchase/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/leaderboard`,
+      cancel_url: `${appUrl}/purchase/cancel?session_id={CHECKOUT_SESSION_ID}`,
     })
 
     // Link Stripe session to transaction
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('Checkout error:', error)
+    Sentry.captureException(error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

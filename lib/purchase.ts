@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs'
 import { prisma } from './db'
 import { recalculateRankings, getUsersOvertaken } from './rankings'
 import { sendOvertakenEmail } from './email'
@@ -75,34 +76,39 @@ export async function fulfillPurchase(transactionId: string) {
     )
 
     for (const userId of overtakenUserIds) {
-      const overtakenUser = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          email: true,
-          username: true,
-          currentContinentRank: true,
-        },
-      })
-
-      if (overtakenUser) {
-        const positionsLost = overtakenUser.currentContinentRank - oldContinentRank + 1
-
-        await sendOvertakenEmail(
-          overtakenUser.email,
-          overtakenUser.username,
-          user.username,
-          user.continent.replace('_', ' '),
-          overtakenUser.currentContinentRank,
-          positionsLost
-        )
-
-        await prisma.notification.create({
-          data: {
-            userId: overtakenUser.id,
-            message: `${user.username} just overtook you on the ${user.continent.replace('_', ' ')} leaderboard! You're now ranked #${overtakenUser.currentContinentRank}.`,
+      try {
+        const overtakenUser = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            currentContinentRank: true,
           },
         })
+
+        if (overtakenUser) {
+          const positionsLost = overtakenUser.currentContinentRank - oldContinentRank + 1
+
+          await sendOvertakenEmail(
+            overtakenUser.email,
+            overtakenUser.username,
+            user.username,
+            user.continent.replace('_', ' '),
+            overtakenUser.currentContinentRank,
+            positionsLost
+          )
+
+          await prisma.notification.create({
+            data: {
+              userId: overtakenUser.id,
+              message: `${user.username} just overtook you on the ${user.continent.replace('_', ' ')} leaderboard! You're now ranked #${overtakenUser.currentContinentRank}.`,
+            },
+          })
+        }
+      } catch (notificationError) {
+        console.error('Notification error for user', userId, notificationError)
+        Sentry.captureException(notificationError)
       }
     }
   }

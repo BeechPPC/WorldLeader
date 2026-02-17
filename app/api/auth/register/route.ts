@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { prisma } from '@/lib/db'
 import { hashPassword, createToken, setAuthCookie } from '@/lib/auth'
 import { getNewUserStartingRank, recalculateRankings } from '@/lib/rankings'
@@ -153,6 +154,7 @@ export async function POST(request: NextRequest) {
 
     // Enhanced error logging for debugging
     console.error('Registration error:', error)
+    Sentry.captureException(error)
     console.error('Error details:', {
       name: error instanceof Error ? error.name : 'Unknown',
       message: error instanceof Error ? error.message : String(error),

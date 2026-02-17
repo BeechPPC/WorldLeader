@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/db'
 import { fulfillPurchase } from '@/lib/purchase'
@@ -53,11 +54,26 @@ export async function POST(request: NextRequest) {
         }
         break
       }
+
+      case 'checkout.session.async_payment_failed': {
+        const session = event.data.object
+        const transactionId = session.metadata?.transactionId
+
+        if (transactionId) {
+          await prisma.transaction.update({
+            where: { id: transactionId },
+            data: { paymentStatus: 'FAILED' },
+          })
+          console.log('Webhook: Marked async payment failed transaction as FAILED', transactionId)
+        }
+        break
+      }
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error('Webhook handler error:', error)
+    Sentry.captureException(error)
     return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 })
   }
 }

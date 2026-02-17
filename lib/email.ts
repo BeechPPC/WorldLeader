@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs'
 import { Resend } from 'resend'
 
 // Initialize Resend only if API key is available (allows builds without key)
@@ -174,6 +175,7 @@ export async function sendWelcomeEmail(
     return { success: true, data }
   } catch (error) {
     console.error('Welcome email error:', error)
+    Sentry.captureException(error)
     return { success: false, error }
   }
 }
@@ -265,6 +267,7 @@ export async function sendOvertakenEmail(
     return { success: true, data }
   } catch (error) {
     console.error('Overtaken email error:', error)
+    Sentry.captureException(error)
     return { success: false, error }
   }
 }
@@ -347,6 +350,7 @@ export async function sendPasswordResetEmail(
     return { success: true, data }
   } catch (error) {
     console.error('Password reset email error:', error)
+    Sentry.captureException(error)
     return { success: false, error }
   }
 }
@@ -428,6 +432,7 @@ export async function sendMilestoneEmail(
     return { success: true, data }
   } catch (error) {
     console.error('Milestone email error:', error)
+    Sentry.captureException(error)
     return { success: false, error }
   }
 }
