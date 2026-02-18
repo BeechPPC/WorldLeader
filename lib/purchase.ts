@@ -112,4 +112,74 @@ export async function fulfillPurchase(transactionId: string) {
       }
     }
   }
+
+  // "Catching up" alerts — notify users ranked just above the buyer
+  try {
+    const buyer = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        username: true,
+        totalPositionsPurchased: true,
+        currentContinentRank: true,
+        continent: true,
+      },
+    })
+
+    if (buyer && buyer.currentContinentRank > 1) {
+      const nearbyUsers = await prisma.user.findMany({
+        where: {
+          continent: buyer.continent,
+          id: { not: buyer.id },
+          currentContinentRank: {
+            gte: Math.max(1, buyer.currentContinentRank - 5),
+            lt: buyer.currentContinentRank,
+          },
+        },
+        select: {
+          id: true,
+          username: true,
+          totalPositionsPurchased: true,
+          currentContinentRank: true,
+        },
+      })
+
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      const continentLabel = buyer.continent.replace('_', ' ')
+
+      for (const target of nearbyUsers) {
+        const gap = target.totalPositionsPurchased - buyer.totalPositionsPurchased
+        if (gap > 5 || gap < 0) continue
+
+        try {
+          // Dedup: skip if a catching-up notification from this buyer to this user exists within 24h
+          const existing = await prisma.notification.findFirst({
+            where: {
+              userId: target.id,
+              AND: [
+                { message: { contains: buyer.username } },
+                { message: { startsWith: 'Watch out!' } },
+              ],
+              createdAt: { gte: twentyFourHoursAgo },
+            },
+          })
+
+          if (existing) continue
+
+          await prisma.notification.create({
+            data: {
+              userId: target.id,
+              message: `Watch out! @${buyer.username} is now just ${gap} position${gap !== 1 ? 's' : ''} behind you on the ${continentLabel} leaderboard!`,
+            },
+          })
+        } catch (catchingUpError) {
+          console.error('Catching-up notification error for user', target.id, catchingUpError)
+          Sentry.captureException(catchingUpError)
+        }
+      }
+    }
+  } catch (catchingUpBlockError) {
+    console.error('Catching-up alerts block error:', catchingUpBlockError)
+    Sentry.captureException(catchingUpBlockError)
+  }
 }

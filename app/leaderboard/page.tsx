@@ -1,9 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import toast, { Toaster } from 'react-hot-toast'
 import { CONTINENTS } from '@/lib/countries'
+import { getUserBadges } from '@/lib/badges'
+import NotificationBell from '@/components/NotificationBell'
 
 interface User {
   id: string
@@ -22,6 +25,32 @@ interface LeaderboardEntry {
   currentContinentRank: number
   currentGlobalRank: number
   continent: string
+  totalPositionsPurchased: number
+}
+
+interface ActivityItem {
+  id: string
+  username: string
+  continent: string
+  positionsPurchased: number
+  timestamp: string
+}
+
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now()
+  const then = new Date(dateString).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(months / 12)}y ago`
 }
 
 const getContinentEmoji = (continent: string) => {
@@ -63,22 +92,26 @@ export default function LeaderboardPage() {
   const [purchaseAmount, setPurchaseAmount] = useState('')
   const [purchasing, setPurchasing] = useState(false)
   const [purchaseError, setPurchaseError] = useState('')
+  const [activity, setActivity] = useState<ActivityItem[]>([])
+  const previousRanksRef = useRef<Map<string, number>>(new Map())
+  const [rankChanges, setRankChanges] = useState<Map<string, 'up' | 'down'>>(new Map())
+  const [preview, setPreview] = useState<{
+    currentContinentRank: number
+    currentGlobalRank: number
+    predictedContinentRank: number
+    predictedGlobalRank: number
+    overtaken: { username: string; currentRank: number }[]
+  } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [showShareModal, setShowShareModal] = useState(false)
 
-  useEffect(() => {
-    fetchCurrentUser()
-  }, [])
-
-  useEffect(() => {
-    if (user) {
-      fetchLeaderboard()
-    }
-  }, [selectedTab, user])
-
-  const fetchCurrentUser = async () => {
+  const fetchCurrentUser = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/me')
       if (!response.ok) {
-        router.push('/login')
+        setUser(null)
+        setSelectedTab('WORLD')
         return
       }
       const data = await response.json()
@@ -86,30 +119,129 @@ export default function LeaderboardPage() {
       setSelectedTab(data.user.continent)
     } catch (error) {
       console.error('Failed to fetch user:', error)
-      router.push('/login')
+      setUser(null)
+      setSelectedTab('WORLD')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     setLeaderboardLoading(true)
     try {
       const continent = selectedTab === 'WORLD' ? '' : selectedTab
       const url = continent ? `/api/leaderboard?continent=${continent}` : '/api/leaderboard'
       const response = await fetch(url)
       const data = await response.json()
-      setLeaderboard(data.leaderboard || [])
+      const entries: LeaderboardEntry[] = data.leaderboard || []
+
+      // Detect rank changes
+      if (previousRanksRef.current.size > 0) {
+        const changes = new Map<string, 'up' | 'down'>()
+        entries.forEach((entry) => {
+          const rank = selectedTab === 'WORLD' ? entry.currentGlobalRank : entry.currentContinentRank
+          const prevRank = previousRanksRef.current.get(entry.id)
+          if (prevRank !== undefined && prevRank !== rank) {
+            changes.set(entry.id, rank < prevRank ? 'up' : 'down')
+          }
+        })
+        if (changes.size > 0) {
+          setRankChanges(changes)
+          setTimeout(() => setRankChanges(new Map()), 3000)
+        }
+      }
+
+      // Store current ranks
+      const newRanks = new Map<string, number>()
+      entries.forEach((entry) => {
+        const rank = selectedTab === 'WORLD' ? entry.currentGlobalRank : entry.currentContinentRank
+        newRanks.set(entry.id, rank)
+      })
+      previousRanksRef.current = newRanks
+
+      setLeaderboard(entries)
     } catch (error) {
       console.error('Failed to fetch leaderboard:', error)
     } finally {
       setLeaderboardLoading(false)
     }
-  }
+  }, [selectedTab])
+
+  useEffect(() => {
+    fetchCurrentUser()
+  }, [fetchCurrentUser])
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      try {
+        const res = await fetch('/api/activity')
+        const data = await res.json()
+        if (data.activity?.length) setActivity(data.activity)
+      } catch {}
+    }
+    fetchActivity()
+    const interval = setInterval(fetchActivity, 20000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (!loading) {
+      fetchLeaderboard()
+    }
+  }, [selectedTab, loading, fetchLeaderboard])
+
+  // 30s polling with visibility pause
+  useEffect(() => {
+    if (loading) return
+
+    let intervalId: ReturnType<typeof setInterval>
+
+    const startPolling = () => {
+      intervalId = setInterval(fetchLeaderboard, 30000)
+    }
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(intervalId)
+      } else {
+        fetchLeaderboard()
+        startPolling()
+      }
+    }
+
+    startPolling()
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [loading, fetchLeaderboard])
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
     router.push('/')
+  }
+
+  const fetchPreview = (amount: string) => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    const num = parseInt(amount, 10)
+    if (!num || num < 1) {
+      setPreview(null)
+      return
+    }
+    debounceTimerRef.current = setTimeout(async () => {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch(`/api/leaderboard/preview?positions=${num}`)
+        if (res.ok) {
+          const data = await res.json()
+          setPreview(data)
+        }
+      } catch {} finally {
+        setPreviewLoading(false)
+      }
+    }, 300)
   }
 
   const handlePurchase = async (e: React.FormEvent) => {
@@ -189,118 +321,170 @@ export default function LeaderboardPage() {
               </div>
             </Link>
 
-            <div className="flex items-center gap-4">
-              <div className="text-center md:text-right bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-6 py-3 rounded-xl border border-blue-500/30">
-                <div className="text-white font-bold flex items-center gap-2 justify-center md:justify-end">
-                  <span className="text-3xl">{getCountryFlag(user?.countryCode || '')}</span>
-                  <span className="text-xl">{user?.username}</span>
+            {user ? (
+              <div className="flex items-center gap-4">
+                <div className="text-center md:text-right bg-gradient-to-r from-blue-600/20 to-purple-600/20 px-6 py-3 rounded-xl border border-blue-500/30">
+                  <div className="text-white font-bold flex items-center gap-2 justify-center md:justify-end">
+                    <span className="text-3xl">{getCountryFlag(user.countryCode)}</span>
+                    <span className="text-xl">{user.username}</span>
+                  </div>
+                  <div className="text-sm text-gray-300 mt-1">
+                    <span className="text-blue-400 font-bold">#{user.currentContinentRank}</span> {user.continent.replace('_', ' ')} |
+                    <span className="text-purple-400 font-bold ml-1">#{user.currentGlobalRank}</span> Global
+                  </div>
                 </div>
-                <div className="text-sm text-gray-300 mt-1">
-                  <span className="text-blue-400 font-bold">#{user?.currentContinentRank}</span> {user?.continent.replace('_', ' ')} |
-                  <span className="text-purple-400 font-bold ml-1">#{user?.currentGlobalRank}</span> Global
-                </div>
-              </div>
 
-              <div className="flex gap-2">
-                <Link
-                  href="/profile"
-                  className="px-4 py-3 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-xl transition-all flex items-center gap-2 border border-gray-700/50"
-                >
-                  <span>👤</span>
-                  <span className="hidden md:inline">Profile</span>
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="px-4 py-3 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-xl transition-all border border-gray-700/50"
-                >
-                  <span className="hidden md:inline">Logout</span>
-                  <span className="md:hidden">🚪</span>
-                </button>
+                <div className="flex gap-2">
+                  <NotificationBell />
+                  <Link
+                    href="/profile"
+                    className="px-4 py-3 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-xl transition-all flex items-center gap-2 border border-gray-700/50"
+                  >
+                    <span>👤</span>
+                    <span className="hidden md:inline">Profile</span>
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="px-4 py-3 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-xl transition-all border border-gray-700/50"
+                  >
+                    <span className="hidden md:inline">Logout</span>
+                    <span className="md:hidden">🚪</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/login"
+                  className="px-4 py-3 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-xl transition-all border border-gray-700/50 font-semibold"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl transition-all font-bold shadow-lg shadow-blue-500/25"
+                >
+                  Join to Compete
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
+      {/* Live Activity Ticker */}
+      {activity.length > 0 && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 border-b border-gray-800/50 py-3">
+          <div className="flex animate-ticker whitespace-nowrap">
+            {[...activity, ...activity].map((item, i) => (
+              <div key={`${item.id}-${i}`} className="inline-flex items-center gap-2 mx-6 text-sm">
+                <span>{getContinentEmoji(item.continent)}</span>
+                <span className="text-white font-bold">{item.username}</span>
+                <span className="text-gray-400">climbed</span>
+                <span className="text-blue-400 font-bold">+{item.positionsPurchased}</span>
+                <span className="text-gray-500">{formatRelativeTime(item.timestamp)}</span>
+                <span className="text-gray-700 mx-2">|</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Hero Stats Section with Visual Progress */}
-        <div className="mb-12">
-          <div className="relative bg-gradient-to-br from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl border border-gray-700/50 overflow-hidden">
-            {/* Globe Background Pattern */}
-            <div className="absolute inset-0 opacity-5">
-              <div className="absolute top-10 right-10 text-[20rem] leading-none">🌍</div>
-            </div>
-
-            <div className="relative p-8 md:p-12">
-              <div className="text-center mb-8">
-                <h1 className="text-5xl md:text-7xl font-black mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  YOUR WORLD DOMINATION
-                </h1>
-                <p className="text-gray-400 text-lg">Track your ascent to global supremacy</p>
+        {/* Hero Stats Section - Only for logged-in users */}
+        {user ? (
+          <div className="mb-12">
+            <div className="relative bg-gradient-to-br from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl border border-gray-700/50 overflow-hidden">
+              <div className="absolute inset-0 opacity-5">
+                <div className="absolute top-10 right-10 text-[20rem] leading-none">🌍</div>
               </div>
 
-              {/* Visual Rank Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-8">
-                {/* Continental Rank Card */}
-                <div className="relative group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition-opacity" />
-                  <div className="relative bg-gradient-to-br from-blue-600/20 to-cyan-600/20 border-2 border-blue-500/50 rounded-2xl p-6 backdrop-blur-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="text-5xl">{getContinentEmoji(user?.continent || '')}</div>
-                      <div className="text-blue-400 font-bold text-sm">CONTINENTAL</div>
-                    </div>
-                    <div className="text-6xl font-black text-white mb-2">#{user?.currentContinentRank}</div>
-                    <div className="text-gray-300 font-semibold mb-4">{user?.continent.replace('_', ' ')}</div>
+              <div className="relative p-8 md:p-12">
+                <div className="text-center mb-8">
+                  <h1 className="text-5xl md:text-7xl font-black mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    YOUR WORLD DOMINATION
+                  </h1>
+                  <p className="text-gray-400 text-lg">Track your ascent to global supremacy</p>
+                </div>
 
-                    {/* Progress Bar */}
-                    <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-1000 ease-out"
-                        style={{ width: `${progressPercentage}%` }}
-                      />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-8">
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition-opacity" />
+                    <div className="relative bg-gradient-to-br from-blue-600/20 to-cyan-600/20 border-2 border-blue-500/50 rounded-2xl p-6 backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-5xl">{getContinentEmoji(user.continent)}</div>
+                        <div className="text-blue-400 font-bold text-sm">CONTINENTAL</div>
+                      </div>
+                      <div className="text-6xl font-black text-white mb-2">#{user.currentContinentRank}</div>
+                      <div className="text-gray-300 font-semibold mb-4">{user.continent.replace('_', ' ')}</div>
+                      <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${progressPercentage}%` }}
+                        />
+                      </div>
+                      <div className="text-right text-xs text-gray-400 mt-1">Top {progressPercentage.toFixed(0)}%</div>
                     </div>
-                    <div className="text-right text-xs text-gray-400 mt-1">Top {progressPercentage.toFixed(0)}%</div>
+                  </div>
+
+                  <div className="relative group">
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition-opacity" />
+                    <div className="relative bg-gradient-to-br from-purple-600/20 to-pink-600/20 border-2 border-purple-500/50 rounded-2xl p-6 backdrop-blur-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-5xl">🌐</div>
+                        <div className="text-purple-400 font-bold text-sm">GLOBAL</div>
+                      </div>
+                      <div className="text-6xl font-black text-white mb-2">#{user.currentGlobalRank}</div>
+                      <div className="text-gray-300 font-semibold mb-4">Worldwide Ranking</div>
+                      <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${progressPercentage}%` }}
+                        />
+                      </div>
+                      <div className="text-right text-xs text-gray-400 mt-1">Top {progressPercentage.toFixed(0)}%</div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Global Rank Card */}
-                <div className="relative group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition-opacity" />
-                  <div className="relative bg-gradient-to-br from-purple-600/20 to-pink-600/20 border-2 border-purple-500/50 rounded-2xl p-6 backdrop-blur-sm">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="text-5xl">🌐</div>
-                      <div className="text-purple-400 font-bold text-sm">GLOBAL</div>
-                    </div>
-                    <div className="text-6xl font-black text-white mb-2">#{user?.currentGlobalRank}</div>
-                    <div className="text-gray-300 font-semibold mb-4">Worldwide Ranking</div>
-
-                    {/* Progress Bar */}
-                    <div className="bg-gray-800/50 rounded-full h-3 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-1000 ease-out"
-                        style={{ width: `${progressPercentage}%` }}
-                      />
-                    </div>
-                    <div className="text-right text-xs text-gray-400 mt-1">Top {progressPercentage.toFixed(0)}%</div>
-                  </div>
+                <div className="text-center">
+                  <button
+                    onClick={() => setShowPurchaseModal(true)}
+                    className="group relative inline-flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white text-2xl font-black rounded-2xl transition-all transform hover:scale-105 shadow-2xl hover:shadow-purple-500/50"
+                  >
+                    <span className="text-3xl">🚀</span>
+                    <span>CLIMB HIGHER</span>
+                    <span className="text-3xl group-hover:translate-x-2 transition-transform">→</span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity blur-xl -z-10" />
+                  </button>
                 </div>
-              </div>
-
-              {/* Call to Action */}
-              <div className="text-center">
-                <button
-                  onClick={() => setShowPurchaseModal(true)}
-                  className="group relative inline-flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white text-2xl font-black rounded-2xl transition-all transform hover:scale-105 shadow-2xl hover:shadow-purple-500/50"
-                >
-                  <span className="text-3xl">🚀</span>
-                  <span>CLIMB HIGHER</span>
-                  <span className="text-3xl group-hover:translate-x-2 transition-transform">→</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity blur-xl -z-10" />
-                </button>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="mb-12">
+            <div className="relative bg-gradient-to-br from-blue-600/10 via-purple-600/10 to-pink-600/10 rounded-3xl border border-gray-700/50 overflow-hidden">
+              <div className="absolute inset-0 opacity-5">
+                <div className="absolute top-10 right-10 text-[20rem] leading-none">🌍</div>
+              </div>
+              <div className="relative p-8 md:p-12 text-center">
+                <h1 className="text-5xl md:text-7xl font-black mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                  WORLD LEADERBOARD
+                </h1>
+                <p className="text-gray-400 text-lg mb-8">See who rules the world. Join to compete.</p>
+                <Link
+                  href="/register"
+                  className="group relative inline-flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 text-white text-2xl font-black rounded-2xl transition-all transform hover:scale-105 shadow-2xl hover:shadow-purple-500/50"
+                >
+                  <span className="text-3xl">🚀</span>
+                  <span>JOIN TO COMPETE</span>
+                  <span className="text-3xl group-hover:translate-x-2 transition-transform">→</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity blur-xl -z-10" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Continent Selector - More Visual */}
         <div className="mb-12">
@@ -370,8 +554,17 @@ export default function LeaderboardPage() {
                       <div className="text-6xl mb-3 group-hover:scale-110 transition-transform">
                         {getCountryFlag(topThree[1].countryCode)}
                       </div>
-                      <div className="text-white font-black text-xl mb-2 text-center truncate w-full">
+                      <div className="text-white font-black text-xl mb-2 text-center truncate w-full flex items-center justify-center gap-1">
                         {topThree[1].id === user?.id ? 'You' : topThree[1].username}
+                        {rankChanges.get(topThree[1].id) === 'up' && (
+                          <svg className="w-5 h-5 text-green-400 animate-rank-up" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {rankChanges.get(topThree[1].id) === 'down' && (
+                          <svg className="w-5 h-5 text-red-400 animate-rank-up" style={{ transform: 'rotate(180deg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {getUserBadges(topThree[1]).slice(-3).map(b => (
+                          <span key={b.id} title={b.name} className="text-sm">{b.icon}</span>
+                        ))}
                       </div>
                       <div className="text-7xl mb-2">🥈</div>
                       <div className="text-gray-200 font-black text-4xl">#2</div>
@@ -389,8 +582,17 @@ export default function LeaderboardPage() {
                       <div className="text-7xl mb-4 group-hover:scale-125 transition-transform animate-bounce">
                         {getCountryFlag(topThree[0].countryCode)}
                       </div>
-                      <div className="text-white font-black text-2xl mb-3 text-center truncate w-full">
+                      <div className="text-white font-black text-2xl mb-3 text-center truncate w-full flex items-center justify-center gap-1">
                         {topThree[0].id === user?.id ? 'You' : topThree[0].username}
+                        {rankChanges.get(topThree[0].id) === 'up' && (
+                          <svg className="w-6 h-6 text-green-400 animate-rank-up" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {rankChanges.get(topThree[0].id) === 'down' && (
+                          <svg className="w-6 h-6 text-red-400 animate-rank-up" style={{ transform: 'rotate(180deg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {getUserBadges(topThree[0]).slice(-3).map(b => (
+                          <span key={b.id} title={b.name} className="text-sm">{b.icon}</span>
+                        ))}
                       </div>
                       <div className="text-8xl mb-2 animate-pulse">👑</div>
                       <div className="text-white font-black text-5xl">#1</div>
@@ -408,8 +610,17 @@ export default function LeaderboardPage() {
                       <div className="text-6xl mb-3 group-hover:scale-110 transition-transform">
                         {getCountryFlag(topThree[2].countryCode)}
                       </div>
-                      <div className="text-white font-black text-xl mb-2 text-center truncate w-full">
+                      <div className="text-white font-black text-xl mb-2 text-center truncate w-full flex items-center justify-center gap-1">
                         {topThree[2].id === user?.id ? 'You' : topThree[2].username}
+                        {rankChanges.get(topThree[2].id) === 'up' && (
+                          <svg className="w-5 h-5 text-green-400 animate-rank-up" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {rankChanges.get(topThree[2].id) === 'down' && (
+                          <svg className="w-5 h-5 text-red-400 animate-rank-up" style={{ transform: 'rotate(180deg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                        )}
+                        {getUserBadges(topThree[2]).slice(-3).map(b => (
+                          <span key={b.id} title={b.name} className="text-sm">{b.icon}</span>
+                        ))}
                       </div>
                       <div className="text-7xl mb-2">🥉</div>
                       <div className="text-orange-100 font-black text-4xl">#3</div>
@@ -477,12 +688,21 @@ export default function LeaderboardPage() {
 
                       {/* Username */}
                       <div className="flex-1">
-                        <div className={`text-2xl font-black ${
+                        <div className={`text-2xl font-black flex items-center gap-2 ${
                           isCurrentUser ? 'text-white' : 'text-gray-200 group-hover:text-white'
                         } transition-colors`}>
                           {entry.username}
                           {isCurrentUser && (
-                            <span className="ml-3 text-blue-400 text-lg">(YOU)</span>
+                            <span className="text-blue-400 text-lg">(YOU)</span>
+                          )}
+                          {getUserBadges(entry).slice(-3).map(b => (
+                            <span key={b.id} title={b.name} className="text-sm">{b.icon}</span>
+                          ))}
+                          {rankChanges.get(entry.id) === 'up' && (
+                            <svg className="w-5 h-5 text-green-400 animate-rank-up flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
+                          )}
+                          {rankChanges.get(entry.id) === 'down' && (
+                            <svg className="w-5 h-5 text-red-400 animate-rank-up flex-shrink-0" style={{ transform: 'rotate(180deg)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" /></svg>
                           )}
                         </div>
                         {selectedTab === 'WORLD' && (
@@ -492,9 +712,15 @@ export default function LeaderboardPage() {
                         )}
                       </div>
 
-                      {/* Visual Indicator */}
+                      {/* Visual Indicator + Share */}
                       {isCurrentUser && (
-                        <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 flex items-center gap-2">
+                          <button
+                            onClick={() => setShowShareModal(true)}
+                            className="px-3 py-2 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/50 rounded-xl text-sm text-purple-300 font-bold transition-all hover:scale-105"
+                          >
+                            Share
+                          </button>
                           <div className="text-5xl animate-bounce">⭐</div>
                         </div>
                       )}
@@ -507,8 +733,8 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      {/* Purchase Modal - Same as before */}
-      {showPurchaseModal && (
+      {/* Purchase Modal - Only for logged-in users */}
+      {user && showPurchaseModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black border-2 border-gray-700/50 rounded-3xl max-w-md w-full p-8 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-full blur-3xl -z-10" />
@@ -529,6 +755,24 @@ export default function LeaderboardPage() {
               </p>
             </div>
 
+            {/* Quick Purchase Presets */}
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              {[5, 10, 25, 50].map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => { setPurchaseAmount(String(amount)); fetchPreview(String(amount)) }}
+                  className={`py-3 rounded-xl font-black text-lg transition-all transform hover:scale-105 border-2 ${
+                    purchaseAmount === String(amount)
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 border-blue-400 text-white shadow-lg shadow-blue-500/30'
+                      : 'bg-gray-800/80 border-gray-600/50 text-gray-300 hover:border-blue-500/50 hover:text-white'
+                  }`}
+                >
+                  ${amount}
+                </button>
+              ))}
+            </div>
+
             <form onSubmit={handlePurchase} className="space-y-6">
               {purchaseError && (
                 <div className="bg-red-500/20 border-2 border-red-500/50 rounded-2xl p-4 text-red-300 font-semibold text-center">
@@ -547,7 +791,7 @@ export default function LeaderboardPage() {
                   max="10000"
                   step="1"
                   value={purchaseAmount}
-                  onChange={(e) => setPurchaseAmount(e.target.value)}
+                  onChange={(e) => { setPurchaseAmount(e.target.value); fetchPreview(e.target.value) }}
                   className="w-full px-6 py-4 bg-gray-900/80 border-2 border-gray-600/50 rounded-2xl text-white text-xl font-bold focus:outline-none focus:ring-4 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                   placeholder="Enter amount"
                 />
@@ -560,6 +804,36 @@ export default function LeaderboardPage() {
                     </p>
                   </div>
                 )}
+                {purchaseAmount && preview && !previewLoading && (
+                  <div className="mt-3 bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-2 border-purple-500/30 rounded-2xl p-4">
+                    <p className="text-center text-sm text-gray-300 mb-2 font-bold">Predicted Rank</p>
+                    <div className="flex justify-center gap-6 text-center">
+                      <div>
+                        <span className="text-blue-400 font-black text-2xl">#{preview.predictedContinentRank}</span>
+                        <p className="text-xs text-gray-400 mt-1">Continental</p>
+                      </div>
+                      <div className="border-l border-gray-600" />
+                      <div>
+                        <span className="text-purple-400 font-black text-2xl">#{preview.predictedGlobalRank}</span>
+                        <p className="text-xs text-gray-400 mt-1">Global</p>
+                      </div>
+                    </div>
+                    {preview.overtaken.length > 0 && (
+                      <p className="text-center text-sm text-gray-300 mt-3">
+                        You&apos;ll overtake{' '}
+                        {preview.overtaken.map((u, i) => (
+                          <span key={u.username}>
+                            <span className="text-pink-400 font-bold">@{u.username}</span>
+                            {i < preview.overtaken.length - 1 ? ', ' : ''}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {purchaseAmount && previewLoading && (
+                  <div className="mt-3 text-center text-gray-500 text-sm py-2">Calculating preview...</div>
+                )}
               </div>
 
               <div className="flex gap-4">
@@ -569,6 +843,7 @@ export default function LeaderboardPage() {
                     setShowPurchaseModal(false)
                     setPurchaseError('')
                     setPurchaseAmount('')
+                    setPreview(null)
                   }}
                   className="flex-1 px-6 py-4 bg-gray-700/80 hover:bg-gray-600/80 border-2 border-gray-600/50 text-white font-black text-lg rounded-2xl transition-all hover:scale-105"
                 >
@@ -590,6 +865,57 @@ export default function LeaderboardPage() {
           </div>
         </div>
       )}
+
+      {/* Share Modal */}
+      {user && showShareModal && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-black border-2 border-gray-700/50 rounded-3xl max-w-md w-full p-8 shadow-2xl relative">
+            <div className="text-center mb-6">
+              <div className="text-6xl mb-4">🔗</div>
+              <h2 className="text-3xl font-black text-white mb-2">Share Your Rank</h2>
+              <p className="text-gray-400">Let the world know where you stand</p>
+            </div>
+
+            <div className="space-y-4">
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/u/${user.username}`
+                  navigator.clipboard.writeText(url)
+                  toast.success('Link copied!')
+                }}
+                className="w-full px-6 py-4 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-2xl font-bold border border-gray-700/50 transition-all hover:scale-105 flex items-center justify-center gap-3"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+                Copy Profile Link
+              </button>
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/u/${user.username}`
+                  const text = `I'm ranked #${user.currentGlobalRank} globally on WorldLeader.io! Can you beat me?`
+                  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank')
+                }}
+                className="w-full px-6 py-4 bg-gray-800/80 hover:bg-gray-700/80 text-white rounded-2xl font-bold border border-gray-700/50 transition-all hover:scale-105 flex items-center justify-center gap-3"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                Share on X
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowShareModal(false)}
+              className="mt-6 w-full px-6 py-3 bg-gray-700/50 hover:bg-gray-600/50 text-gray-300 rounded-2xl font-bold transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      <Toaster position="top-center" />
 
       {/* Footer */}
       <footer className="py-8 px-4 border-t border-gray-800/50 bg-black/70 backdrop-blur-xl">

@@ -78,6 +78,7 @@ export async function getLeaderboard(
       currentContinentRank: true,
       currentGlobalRank: true,
       continent: true,
+      totalPositionsPurchased: true,
     },
   })
 }

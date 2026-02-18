@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { getUserBadges, getAllBadgeDefinitions } from '@/lib/badges'
+import NotificationBell from '@/components/NotificationBell'
 
 interface ProfileData {
   profile: {
@@ -37,6 +39,23 @@ interface ProfileData {
     readStatus: boolean
     createdAt: string
   }>
+}
+
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now()
+  const then = new Date(dateString).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(months / 12)}y ago`
 }
 
 export default function ProfilePage() {
@@ -116,7 +135,8 @@ export default function ProfilePage() {
             <h1 className="text-3xl font-bold text-gray-100">Profile</h1>
             <p className="text-gray-400 mt-1">Manage your account and track your progress</p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
+            <NotificationBell />
             <Link
               href="/leaderboard"
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
@@ -204,6 +224,45 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* Achievements */}
+        <div className="bg-gray-900/50 backdrop-blur rounded-lg border border-gray-800 p-6 mb-6">
+          <h3 className="text-xl font-bold text-gray-100 mb-4 flex items-center gap-2">
+            <span>🏆</span> Achievements
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {(() => {
+              const earned = getUserBadges({
+                totalPositionsPurchased: profile.totalPositionsPurchased,
+                currentGlobalRank: profile.currentGlobalRank,
+              })
+              const earnedIds = new Set(earned.map(b => b.id))
+              const all = getAllBadgeDefinitions()
+              return all.map((badge) => {
+                const isEarned = earnedIds.has(badge.id)
+                return (
+                  <div
+                    key={badge.id}
+                    className={`rounded-xl p-4 border text-center transition-all ${
+                      isEarned
+                        ? 'bg-gradient-to-br from-blue-600/20 to-purple-600/20 border-blue-500/50'
+                        : 'bg-gray-800/30 border-gray-700/50 opacity-40'
+                    }`}
+                  >
+                    <div className="text-3xl mb-2">{badge.icon}</div>
+                    <div className={`text-sm font-bold ${isEarned ? 'text-white' : 'text-gray-500'}`}>
+                      {badge.name}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">{badge.description}</div>
+                    {!isEarned && (
+                      <div className="text-xs text-gray-600 mt-1 font-semibold">Locked</div>
+                    )}
+                  </div>
+                )
+              })
+            })()}
+          </div>
+        </div>
+
         {/* Transactions & Notifications */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Transaction History */}
@@ -212,7 +271,16 @@ export default function ProfilePage() {
               <span>💳</span> Recent Transactions
             </h3>
             {transactions.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No transactions yet</p>
+              <div className="text-center py-10">
+                <div className="text-5xl mb-4">📊</div>
+                <p className="text-gray-400 font-semibold mb-4">No transactions yet</p>
+                <Link
+                  href="/leaderboard"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold rounded-xl transition-all hover:scale-105"
+                >
+                  Start Climbing
+                </Link>
+              </div>
             ) : (
               <div className="space-y-3">
                 {transactions.map((transaction) => (
@@ -220,30 +288,48 @@ export default function ProfilePage() {
                     key={transaction.id}
                     className="bg-gray-800/50 rounded-lg p-4 border border-gray-700"
                   >
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <p className="text-white font-semibold">
+                    <div className="flex items-center gap-4">
+                      {/* Arrow indicator */}
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                        transaction.status === 'COMPLETED'
+                          ? 'bg-green-500/20 text-green-400'
+                          : transaction.status === 'PENDING'
+                          ? 'bg-yellow-500/20 text-yellow-400'
+                          : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                        </svg>
+                      </div>
+
+                      {/* Position count */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-bold text-lg">
                           +{transaction.positionsPurchased} positions
                         </p>
-                        <p className="text-gray-400 text-sm">
-                          {new Date(transaction.timestamp).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                        <p className="text-gray-500 text-sm">
+                          {formatRelativeTime(transaction.timestamp)}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-green-400 font-bold">${transaction.amountUsd.toFixed(2)}</p>
-                        <p className={`text-xs ${
-                          transaction.status === 'COMPLETED' ? 'text-green-500' :
-                          transaction.status === 'PENDING' ? 'text-yellow-500' :
-                          'text-red-500'
-                        }`}>
-                          {transaction.status}
-                        </p>
+
+                      {/* Amount and status */}
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-white font-bold">${transaction.amountUsd.toFixed(2)}</p>
+                        <div className="flex items-center gap-1.5 justify-end mt-1">
+                          <span className={`w-2 h-2 rounded-full ${
+                            transaction.status === 'COMPLETED' ? 'bg-green-500' :
+                            transaction.status === 'PENDING' ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`} />
+                          <span className={`text-xs font-medium ${
+                            transaction.status === 'COMPLETED' ? 'text-green-400' :
+                            transaction.status === 'PENDING' ? 'text-yellow-400' :
+                            'text-red-400'
+                          }`}>
+                            {transaction.status === 'COMPLETED' ? 'Completed' :
+                             transaction.status === 'PENDING' ? 'Pending' : 'Failed'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -287,13 +373,23 @@ export default function ProfilePage() {
         </div>
 
         {/* Actions */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-4 gap-4">
           <Link
             href="/reset-password"
             className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition-colors text-center"
           >
             Change Password
           </Link>
+          <button
+            onClick={() => {
+              const url = `${window.location.origin}/u/${profile.username}`
+              navigator.clipboard.writeText(url)
+              toast.success('Profile link copied!')
+            }}
+            className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg transition-colors text-center"
+          >
+            Share Profile 🔗
+          </button>
           <Link
             href="/leaderboard"
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors text-center"

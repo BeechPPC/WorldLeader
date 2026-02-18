@@ -11,15 +11,62 @@ interface LeaderboardEntry {
   continent: string
 }
 
+interface ActivityItem {
+  id: string
+  username: string
+  continent: string
+  positionsPurchased: number
+  timestamp: string
+}
+
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now()
+  const then = new Date(dateString).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(months / 12)}y ago`
+}
+
+const getContinentEmoji = (continent: string) => {
+  const emojiMap: { [key: string]: string } = {
+    'AFRICA': '🌍', 'ASIA': '🌏', 'EUROPE': '🌍',
+    'NORTH_AMERICA': '🌎', 'SOUTH_AMERICA': '🌎',
+    'OCEANIA': '🌏', 'ANTARCTICA': '🧊',
+  }
+  return emojiMap[continent] || '🌍'
+}
+
 export default function HomePage() {
   const [topLeaders, setTopLeaders] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({ totalUsers: 0, totalClimbed: 0, continents: 7 })
+  const [stats, setStats] = useState({ totalUsers: 0, totalClimbed: 0, continents: 0 })
+  const [activity, setActivity] = useState<ActivityItem[]>([])
 
   useEffect(() => {
     fetchTopLeaders()
-    // Animate stats on load
-    animateStats()
+    fetchStats()
+  }, [])
+
+  useEffect(() => {
+    const fetchActivity = async () => {
+      try {
+        const res = await fetch('/api/activity')
+        const data = await res.json()
+        if (data.activity?.length) setActivity(data.activity)
+      } catch {}
+    }
+    fetchActivity()
+    const interval = setInterval(fetchActivity, 20000)
+    return () => clearInterval(interval)
   }, [])
 
   const fetchTopLeaders = async () => {
@@ -34,16 +81,34 @@ export default function HomePage() {
     }
   }
 
-  const animateStats = () => {
-    // Simulated stats animation
-    let users = 0
-    let climbed = 0
-    const interval = setInterval(() => {
-      if (users < topLeaders.length) users++
-      if (climbed < 1847) climbed += 47
-      setStats({ totalUsers: users, totalClimbed: climbed, continents: 7 })
-      if (users >= topLeaders.length && climbed >= 1847) clearInterval(interval)
-    }, 50)
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/stats')
+      const data = await res.json()
+      const targetUsers = data.totalUsers || 0
+      const targetClimbed = data.totalPositionsClimbed || 0
+      const targetContinents = data.continentsActive || 0
+
+      // Animate from 0 to real values
+      let users = 0
+      let climbed = 0
+      let continents = 0
+      const stepUsers = Math.ceil(targetUsers / 30) || 1
+      const stepClimbed = Math.ceil(targetClimbed / 30) || 1
+      const stepContinents = Math.ceil(targetContinents / 30) || 1
+
+      const interval = setInterval(() => {
+        users = Math.min(users + stepUsers, targetUsers)
+        climbed = Math.min(climbed + stepClimbed, targetClimbed)
+        continents = Math.min(continents + stepContinents, targetContinents)
+        setStats({ totalUsers: users, totalClimbed: climbed, continents })
+        if (users >= targetUsers && climbed >= targetClimbed && continents >= targetContinents) {
+          clearInterval(interval)
+        }
+      }, 50)
+    } catch {
+      // Leave at 0 on failure
+    }
   }
 
   const getCountryFlag = (countryCode: string) => {
@@ -174,6 +239,24 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Live Activity Ticker */}
+      {activity.length > 0 && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-pink-600/10 border-y border-gray-800/50 py-3">
+          <div className="flex animate-ticker whitespace-nowrap">
+            {[...activity, ...activity].map((item, i) => (
+              <div key={`${item.id}-${i}`} className="inline-flex items-center gap-2 mx-6 text-sm">
+                <span>{getContinentEmoji(item.continent)}</span>
+                <span className="text-white font-bold">{item.username}</span>
+                <span className="text-gray-400">climbed</span>
+                <span className="text-blue-400 font-bold">+{item.positionsPurchased}</span>
+                <span className="text-gray-500">{formatRelativeTime(item.timestamp)}</span>
+                <span className="text-gray-700 mx-2">|</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Live Leaderboard Preview - Enhanced */}
       <section className="py-16 px-4 relative">
