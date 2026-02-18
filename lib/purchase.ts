@@ -105,6 +105,16 @@ export async function fulfillPurchase(transactionId: string) {
               message: `${user.username} just overtook you on the ${user.continent.replace('_', ' ')} leaderboard! You're now ranked #${overtakenUser.currentContinentRank}.`,
             },
           })
+
+          await prisma.rankEvent.create({
+            data: {
+              climberId: user.id,
+              affectedUserId: overtakenUser.id,
+              continent: user.continent,
+              climbedToRank: updatedUser.currentContinentRank,
+              eventType: 'OVERTAKEN',
+            },
+          })
         }
       } catch (notificationError) {
         console.error('Notification error for user', userId, notificationError)

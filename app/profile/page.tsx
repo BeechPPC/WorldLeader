@@ -7,6 +7,16 @@ import toast from 'react-hot-toast'
 import { getUserBadges, getAllBadgeDefinitions } from '@/lib/badges'
 import NotificationBell from '@/components/NotificationBell'
 
+interface BattleLogEntry {
+  id: string
+  type: 'outgoing' | 'incoming'
+  climber: { username: string; countryCode: string }
+  affectedUser: { username: string; countryCode: string }
+  continent: string
+  climbedToRank: number
+  createdAt: string
+}
+
 interface ProfileData {
   profile: {
     id: string
@@ -60,11 +70,13 @@ function formatRelativeTime(dateString: string): string {
 
 export default function ProfilePage() {
   const [profileData, setProfileData] = useState<ProfileData | null>(null)
+  const [battleLog, setBattleLog] = useState<BattleLogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     fetchProfile()
+    fetchBattleLog()
   }, [])
 
   const fetchProfile = async () => {
@@ -86,6 +98,18 @@ export default function ProfilePage() {
       toast.error('Failed to load profile')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchBattleLog = async () => {
+    try {
+      const response = await fetch('/api/profile/battle-log')
+      if (response.ok) {
+        const data = await response.json()
+        setBattleLog(data.battleLog)
+      }
+    } catch {
+      // Silent fail — battle log is non-critical
     }
   }
 
@@ -370,6 +394,59 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Battle Log */}
+        <div className="bg-gray-900/50 backdrop-blur rounded-lg border border-gray-800 p-6 mt-6">
+          <h3 className="text-xl font-bold text-gray-100 mb-4 flex items-center gap-2">
+            <span>&#x2694;&#xFE0F;</span> Battle Log
+          </h3>
+          {battleLog.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No battles yet. Start climbing to create history!</p>
+          ) : (
+            <div className="space-y-3">
+              {battleLog.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`rounded-lg p-4 border flex items-center gap-4 ${
+                    entry.type === 'outgoing'
+                      ? 'bg-green-900/20 border-green-800'
+                      : 'bg-red-900/20 border-red-800'
+                  }`}
+                >
+                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
+                    entry.type === 'outgoing'
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-red-500/20 text-red-400'
+                  }`}>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      {entry.type === 'outgoing' ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      )}
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-200">
+                      {entry.type === 'outgoing'
+                        ? <>You overtook <Link href={`/u/${entry.affectedUser.username}`} className="font-bold text-green-400 hover:underline">@{entry.affectedUser.username}</Link> on {entry.continent.replace('_', ' ')}</>
+                        : <><Link href={`/u/${entry.climber.username}`} className="font-bold text-red-400 hover:underline">@{entry.climber.username}</Link> overtook you on {entry.continent.replace('_', ' ')}</>
+                      }
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">{formatRelativeTime(entry.createdAt)}</p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${
+                      entry.type === 'outgoing' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      #{entry.climbedToRank}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Actions */}

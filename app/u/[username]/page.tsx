@@ -53,6 +53,7 @@ export default async function PublicProfilePage({ params }: Props) {
   const user = await prisma.user.findUnique({
     where: { username },
     select: {
+      id: true,
       username: true,
       countryCode: true,
       continent: true,
@@ -67,6 +68,31 @@ export default async function PublicProfilePage({ params }: Props) {
     notFound()
   }
 
+  const recentBattles = await prisma.rankEvent.findMany({
+    where: {
+      OR: [
+        { climberId: user.id },
+        { affectedUserId: user.id },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    include: {
+      climber: { select: { username: true, countryCode: true } },
+      affectedUser: { select: { username: true, countryCode: true } },
+    },
+  })
+
+  const battleLog = recentBattles.map((event) => ({
+    id: event.id,
+    type: event.climberId === user.id ? 'outgoing' as const : 'incoming' as const,
+    climber: { username: event.climber.username, countryCode: event.climber.countryCode },
+    affectedUser: { username: event.affectedUser.username, countryCode: event.affectedUser.countryCode },
+    continent: event.continent,
+    climbedToRank: event.climbedToRank,
+    createdAt: event.createdAt.toISOString(),
+  }))
+
   return (
     <PublicProfileClient
       user={{
@@ -78,6 +104,7 @@ export default async function PublicProfilePage({ params }: Props) {
         totalPositionsPurchased: user.totalPositionsPurchased,
         createdAt: user.createdAt.toISOString(),
       }}
+      battleLog={battleLog}
     />
   )
 }

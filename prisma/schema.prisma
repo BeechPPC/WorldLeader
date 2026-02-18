@@ -19,12 +19,15 @@ model User {
   totalPositionsPurchased Int            @default(0)
   currentContinentRank    Int            @default(0)
   currentGlobalRank       Int            @default(0)
+  role                    Role           @default(USER)
   resetToken              String?
   resetTokenExpiry        DateTime?
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @updatedAt
   notifications           Notification[]
   transactions            Transaction[]
+  rankEventsAsClimber     RankEvent[]    @relation("RankEventsAsClimber")
+  rankEventsAsAffected    RankEvent[]    @relation("RankEventsAsAffected")
 
   @@index([continent, totalPositionsPurchased])
   @@index([totalPositionsPurchased])
@@ -54,6 +57,30 @@ model Notification {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, readStatus])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum RankEventType {
+  OVERTAKEN
+}
+
+model RankEvent {
+  id             String        @id @default(cuid())
+  climberId      String
+  affectedUserId String
+  continent      Continent
+  climbedToRank  Int
+  eventType      RankEventType @default(OVERTAKEN)
+  createdAt      DateTime      @default(now())
+  climber        User          @relation("RankEventsAsClimber", fields: [climberId], references: [id], onDelete: Cascade)
+  affectedUser   User          @relation("RankEventsAsAffected", fields: [affectedUserId], references: [id], onDelete: Cascade)
+
+  @@index([climberId, createdAt])
+  @@index([affectedUserId, createdAt])
 }
 
 enum Continent {

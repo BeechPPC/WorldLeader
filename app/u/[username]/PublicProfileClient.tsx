@@ -4,6 +4,16 @@ import Link from 'next/link'
 import toast, { Toaster } from 'react-hot-toast'
 import { getUserBadges } from '@/lib/badges'
 
+interface BattleLogEntry {
+  id: string
+  type: 'outgoing' | 'incoming'
+  climber: { username: string; countryCode: string }
+  affectedUser: { username: string; countryCode: string }
+  continent: string
+  climbedToRank: number
+  createdAt: string
+}
+
 interface PublicProfileProps {
   user: {
     username: string
@@ -14,6 +24,7 @@ interface PublicProfileProps {
     totalPositionsPurchased: number
     createdAt: string
   }
+  battleLog?: BattleLogEntry[]
 }
 
 const getContinentEmoji = (continent: string) => {
@@ -34,7 +45,24 @@ const getCountryFlag = (countryCode: string) => {
   return String.fromCodePoint(...codePoints)
 }
 
-export default function PublicProfileClient({ user }: PublicProfileProps) {
+function formatRelativeTime(dateString: string): string {
+  const now = Date.now()
+  const then = new Date(dateString).getTime()
+  const seconds = Math.floor((now - then) / 1000)
+
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+  return `${Math.floor(months / 12)}y ago`
+}
+
+export default function PublicProfileClient({ user, battleLog = [] }: PublicProfileProps) {
   const profileUrl = `${window.location.origin}/u/${user.username}`
   const joinedDate = new Date(user.createdAt).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -124,6 +152,46 @@ export default function PublicProfileClient({ user }: PublicProfileProps) {
                     <span className="text-sm font-bold text-white">{badge.name}</span>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Recent Battles */}
+            {battleLog.length > 0 && (
+              <div className="text-left mb-8 w-full max-w-md mx-auto">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 text-center">Recent Battles</h3>
+                <div className="space-y-2">
+                  {battleLog.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`rounded-lg px-4 py-3 border flex items-center gap-3 ${
+                        entry.type === 'outgoing'
+                          ? 'bg-green-900/20 border-green-800/50'
+                          : 'bg-red-900/20 border-red-800/50'
+                      }`}
+                    >
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        entry.type === 'outgoing' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          {entry.type === 'outgoing' ? (
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                          ) : (
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          )}
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-300">
+                          {entry.type === 'outgoing'
+                            ? <>Overtook <span className="font-bold text-green-400">@{entry.affectedUser.username}</span> on {entry.continent.replace('_', ' ')}</>
+                            : <><span className="font-bold text-red-400">@{entry.climber.username}</span> overtook on {entry.continent.replace('_', ' ')}</>
+                          }
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-500">{formatRelativeTime(entry.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
